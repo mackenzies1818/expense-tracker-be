@@ -1,0 +1,19 @@
+CREATE TYPE expense_category AS ENUM (
+    'GROCERIES',
+    'HOUSING',
+    'EATING_OUT',
+    'TOILETRIES',
+    'FUN',
+    'TRANSPORTATION',
+    'MISC'
+);
+
+CREATE TABLE expenses (
+    id BIGSERIAL PRIMARY KEY,
+    description VARCHAR(255) NOT NULL,
+    amount DECIMAL(10, 2) NOT NULL,
+    token UUID NOT NULL UNIQUE,
+    category expense_category NOT NULL,
+    created_time TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_time TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
