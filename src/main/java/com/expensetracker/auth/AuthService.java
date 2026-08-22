@@ -1,10 +1,9 @@
 package com.expensetracker.auth;
 
-import com.expensetracker.dto.AuthResponse;
-import com.expensetracker.dto.LoginRequest;
-import com.expensetracker.dto.RegisterRequest;
+import com.expensetracker.dto.*;
 import com.expensetracker.exceptions.DuplicateResourceException;
 import com.expensetracker.exceptions.InvalidCredentialsException;
+import com.expensetracker.model.Expense;
 import com.expensetracker.model.User;
 import com.expensetracker.repository.UserRepository;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -43,11 +42,10 @@ public class AuthService {
 
         String token = jwtService.generateToken(user);
 
-        return new AuthResponse(token);
+        return mapDatatoAuthResponse(user, token);
     }
 
     public AuthResponse login(LoginRequest request) {
-        System.out.println("getting user");
         User user = userRepository.findByEmail(request.email())
                 .orElseThrow(() -> new InvalidCredentialsException("Invalid credentials"));
 
@@ -60,6 +58,13 @@ public class AuthService {
 
         String token = jwtService.generateToken(user);
 
-        return new AuthResponse(token);
+        return mapDatatoAuthResponse(user, token);
+    }
+
+    private AuthResponse mapDatatoAuthResponse(User user, String token) {
+        return new AuthResponse(
+            token,
+                new UserResponse(user.getId(), user.getEmail())
+        );
     }
 }

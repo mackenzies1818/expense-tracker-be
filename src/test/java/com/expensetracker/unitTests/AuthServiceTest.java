@@ -67,6 +67,7 @@ class AuthServiceTest {
             assertThat(savedUser.getEmail()).isEqualTo(EMAIL);
             assertThat(savedUser.getPassword()).isEqualTo(ENCODED_PASSWORD);
             assertThat(response.token()).isEqualTo(fakeJwtToken);
+            assertThat(response.user().email()).isEqualTo(EMAIL);
         }
 
         @Test
@@ -115,6 +116,7 @@ class AuthServiceTest {
             AuthResponse response = authService.login(request);
 
             assertThat(response.token()).isEqualTo(fakeJwtToken);
+            assertThat(response.user().email()).isEqualTo(EMAIL);
         }
 
         @Test

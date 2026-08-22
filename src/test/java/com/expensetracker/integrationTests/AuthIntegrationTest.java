@@ -13,7 +13,8 @@ class AuthIntegrationTest extends AbstractIntegrationTest {
 
     @Test
     void shouldRegisterNewUserAndReturnUsableToken() {
-        RegisterRequest request = new RegisterRequest(uniqueEmail(), "Password123!");
+        String email = uniqueEmail();
+        RegisterRequest request = new RegisterRequest(email, "Password123!");
 
         ResponseEntity<AuthResponse> response = restTemplate.postForEntity(
                 "/api/auth/register", request, AuthResponse.class);
@@ -21,6 +22,9 @@ class AuthIntegrationTest extends AbstractIntegrationTest {
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
         assertThat(response.getBody()).isNotNull();
         assertThat(response.getBody().token()).isNotBlank();
+        assertThat(response.getBody().user()).isNotNull();
+        assertThat(response.getBody().user().id()).isNotNull();
+        assertThat(response.getBody().user().email()).isEqualTo(email);
     }
 
     @Test
@@ -49,6 +53,9 @@ class AuthIntegrationTest extends AbstractIntegrationTest {
         assertThat(loginResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
         String token = loginResponse.getBody().token();
         assertThat(token).isNotBlank();
+        assertThat(loginResponse.getBody().user()).isNotNull();
+        assertThat(loginResponse.getBody().user().id()).isNotNull();
+        assertThat(loginResponse.getBody().user().email()).isEqualTo(email);
 
         // Prove the token actually authenticates against the real filter chain,
         // not just that login returned something non-null.
