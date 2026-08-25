@@ -56,7 +56,7 @@ public abstract class AbstractIntegrationTest {
                 AuthResponse.class
         );
 
-        return response.token();
+        return response.accessToken();
     }
 
     protected HttpHeaders authHeaders(String token) {

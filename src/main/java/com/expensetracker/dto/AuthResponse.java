@@ -1,6 +1,7 @@
 package com.expensetracker.dto;
 
 public record AuthResponse(
-        String token,
+        String accessToken,
+        String refreshToken,
         UserResponse user
 ) {}

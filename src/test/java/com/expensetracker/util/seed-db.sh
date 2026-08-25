@@ -19,7 +19,7 @@ set -euo pipefail
 BASE_URL="${1:-http://localhost:8080/api}"
 SEED_PASSWORD="Password123!"
 
-EMAILS=(alice@example.com bob@example.com carol@example.com)
+EMAILS=(alice1@example.com bob1@example.com carol1@example.com)
 
 CATEGORIES=(GROCERIES HOUSING EATING_OUT TOILETRIES FUN TRANSPORTATION MISC)
 
@@ -88,7 +88,7 @@ random_line() {
 
 register_or_login() {
     local email="$1"
-    local response status token
+    local response status accessToken
 
     response=$(curl -s -w '\n%{http_code}' -X POST "${BASE_URL}/auth/register" \
         -H "Content-Type: application/json" \
@@ -97,7 +97,7 @@ register_or_login() {
     body=$(sed '$d' <<< "$response")
 
     if [ "$status" = "200" ]; then
-        echo "$body" | jq -r '.token'
+        echo "$body" | jq -r '.accessToken'
         return
     fi
 
@@ -114,13 +114,13 @@ register_or_login() {
         return 1
     fi
 
-    echo "$body" | jq -r '.token'
+    echo "$body" | jq -r '.accessToken'
 }
 
 for email in "${EMAILS[@]}"; do
     echo "Seeding ${email}..."
 
-    if ! token=$(register_or_login "$email"); then
+    if ! accessToken=$(register_or_login "$email"); then
         echo "  Skipping ${email} due to auth failure."
         continue
     fi
@@ -136,7 +136,7 @@ for email in "${EMAILS[@]}"; do
 
         status=$(curl -s -o /dev/null -w '%{http_code}' -X POST "${BASE_URL}/expenses" \
             -H "Content-Type: application/json" \
-            -H "Authorization: Bearer ${token}" \
+            -H "Authorization: Bearer ${accessToken}" \
             -d "{\"description\":\"${description}\",\"amount\":${amount},\"category\":\"${category}\",\"expenseToken\":null}")
 
         if [ "$status" = "201" ]; then

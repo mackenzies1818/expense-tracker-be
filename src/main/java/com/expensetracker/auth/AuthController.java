@@ -1,8 +1,6 @@
 package com.expensetracker.auth;
 
-import com.expensetracker.dto.AuthResponse;
-import com.expensetracker.dto.LoginRequest;
-import com.expensetracker.dto.RegisterRequest;
+import com.expensetracker.dto.*;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -30,5 +28,12 @@ public class AuthController {
             @RequestBody LoginRequest request
     ) {
         return authService.login(request);
+    }
+
+    @PostMapping("/refresh")
+    public AuthResponse login(
+            @RequestBody RefreshRequest request
+            ) {
+        return authService.refresh(request);
     }
 }

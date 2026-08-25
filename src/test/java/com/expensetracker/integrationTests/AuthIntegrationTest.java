@@ -3,6 +3,7 @@ package com.expensetracker.integrationTests;
 import com.expensetracker.dto.AuthResponse;
 import com.expensetracker.dto.ErrorResponse;
 import com.expensetracker.dto.LoginRequest;
+import com.expensetracker.dto.RefreshRequest;
 import com.expensetracker.dto.RegisterRequest;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.*;
@@ -21,7 +22,8 @@ class AuthIntegrationTest extends AbstractIntegrationTest {
 
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
         assertThat(response.getBody()).isNotNull();
-        assertThat(response.getBody().token()).isNotBlank();
+        assertThat(response.getBody().accessToken()).isNotBlank();
+        assertThat(response.getBody().refreshToken()).isNotBlank();
         assertThat(response.getBody().user()).isNotNull();
         assertThat(response.getBody().user().id()).isNotNull();
         assertThat(response.getBody().user().email()).isEqualTo(email);
@@ -51,8 +53,9 @@ class AuthIntegrationTest extends AbstractIntegrationTest {
                 "/api/auth/login", new LoginRequest(email, "Password123!"), AuthResponse.class);
 
         assertThat(loginResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
-        String token = loginResponse.getBody().token();
-        assertThat(token).isNotBlank();
+        assertThat(loginResponse.getBody().accessToken()).isNotNull();
+        assertThat(loginResponse.getBody().refreshToken()).isNotNull();
+        String token = loginResponse.getBody().accessToken();
         assertThat(loginResponse.getBody().user()).isNotNull();
         assertThat(loginResponse.getBody().user().id()).isNotNull();
         assertThat(loginResponse.getBody().user().email()).isEqualTo(email);
@@ -87,5 +90,57 @@ class AuthIntegrationTest extends AbstractIntegrationTest {
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.UNAUTHORIZED);
         assertThat(response.getBody()).isNotNull();
         assertThat(response.getBody().message()).isEqualTo("Invalid credentials");
+    }
+
+    @Test
+    void shouldRefreshAccessTokenAndNewTokenShouldWorkOnProtectedEndpoint() {
+        String email = uniqueEmail();
+        restTemplate.postForEntity("/api/auth/register",
+                new RegisterRequest(email, "Password123!"), AuthResponse.class);
+
+        ResponseEntity<AuthResponse> loginResponse = restTemplate.postForEntity(
+                "/api/auth/login", new LoginRequest(email, "Password123!"), AuthResponse.class);
+        String refreshToken = loginResponse.getBody().refreshToken();
+
+        ResponseEntity<AuthResponse> refreshResponse = restTemplate.postForEntity(
+                "/api/auth/refresh", new RefreshRequest(refreshToken), AuthResponse.class);
+
+        assertThat(refreshResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(refreshResponse.getBody()).isNotNull();
+        assertThat(refreshResponse.getBody().accessToken()).isNotBlank();
+
+        // This is the exact end-to-end path that was previously broken:
+        // a token issued by /refresh must actually authenticate on a protected endpoint.
+        String newAccessToken = refreshResponse.getBody().accessToken();
+        ResponseEntity<String> protectedResponse = restTemplate.exchange(
+                "/api/expenses", HttpMethod.GET,
+                new HttpEntity<>(authHeaders(newAccessToken)), String.class);
+        assertThat(protectedResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
+    }
+
+    @Test
+    void shouldRejectRefreshWithGarbageToken() {
+        ResponseEntity<ErrorResponse> response = restTemplate.postForEntity(
+                "/api/auth/refresh", new RefreshRequest("not-a-real-token"), ErrorResponse.class);
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.UNAUTHORIZED);
+    }
+
+    @Test
+    void shouldRejectRefreshUsingAnAccessTokenInsteadOfARefreshToken() {
+        String email = uniqueEmail();
+        restTemplate.postForEntity("/api/auth/register",
+                new RegisterRequest(email, "Password123!"), AuthResponse.class);
+
+        ResponseEntity<AuthResponse> loginResponse = restTemplate.postForEntity(
+                "/api/auth/login", new LoginRequest(email, "Password123!"), AuthResponse.class);
+        String accessToken = loginResponse.getBody().accessToken();
+
+        // Using the access token where a refresh token is expected should be rejected,
+        // since it carries type=access, not type=refresh.
+        ResponseEntity<ErrorResponse> response = restTemplate.postForEntity(
+                "/api/auth/refresh", new RefreshRequest(accessToken), ErrorResponse.class);
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.UNAUTHORIZED);
     }
 }
