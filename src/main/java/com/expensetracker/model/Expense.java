@@ -38,6 +38,9 @@ public class Expense {
     @Column(name = "created_time", nullable = false, updatable = false)
     private Instant createdTime;
 
+    @Column(name = "expense_time", nullable = false, updatable = true)
+    private Instant expenseTime;
+
     @Column(name = "updated_time", nullable = false)
     private Instant updatedTime;
 

@@ -58,10 +58,11 @@ class ExpenseControllerTest {
         String description = "Weekly groceries";
         BigDecimal amount = BigDecimal.valueOf(50);
         ExpenseCategory category = ExpenseCategory.GROCERIES;
+        Instant expenseTime = Instant.now();
         CreateExpenseRequest request = new CreateExpenseRequest(
-                description, amount, null, category);
+                description, amount, null, expenseTime, category);
         ExpenseResponse response = new ExpenseResponse(
-                token, description, amount, category,
+                token, description, amount, category, expenseTime,
                 Instant.now(), Instant.now());
 
         when(expenseService.createExpense(any(CreateExpenseRequest.class), eq(EMAIL)))
@@ -75,6 +76,7 @@ class ExpenseControllerTest {
                 .andExpect(jsonPath("$.description").value(description))
                 .andExpect(jsonPath("$.category").value(category.toString()))
                 .andExpect(jsonPath("$.amount").value(amount))
+                .andExpect(jsonPath("$.expenseTime").value(expenseTime.toString()))
                 .andExpect(jsonPath("$.expenseToken").value(token.toString()));
     }
 
@@ -83,8 +85,9 @@ class ExpenseControllerTest {
         String description = "Weekly groceries";
         BigDecimal amount = BigDecimal.valueOf(50);
         ExpenseCategory category = ExpenseCategory.GROCERIES;
+        Instant expenseTime = Instant.now();
         CreateExpenseRequest request = new CreateExpenseRequest(
-                description, amount, null, category);
+                description, amount, null, expenseTime, category);
 
         mockMvc.perform(post("/api/expenses")
                         .contentType("application/json")
@@ -100,8 +103,9 @@ class ExpenseControllerTest {
         String description = "Coffee";
         BigDecimal amount = BigDecimal.valueOf(4.5);
         ExpenseCategory category = ExpenseCategory.EATING_OUT;
+        Instant expenseTime = Instant.now();
         ExpenseResponse response = new ExpenseResponse(
-                token, description, amount, category,
+                token, description, amount, category, expenseTime,
                 Instant.now(), Instant.now());
 
         when(expenseService.getExpense(eq(token), eq(EMAIL))).thenReturn(response);
@@ -111,6 +115,7 @@ class ExpenseControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.description").value(description))
                 .andExpect(jsonPath("$.category").value(category.toString()))
+                .andExpect(jsonPath("$.expenseTime").value(expenseTime.toString()))
                 .andExpect(jsonPath("$.amount").value(amount));
     }
 
@@ -139,8 +144,9 @@ class ExpenseControllerTest {
         String description = "Coffee";
         BigDecimal amount = BigDecimal.valueOf(4.5);
         ExpenseCategory category = ExpenseCategory.EATING_OUT;
+        Instant expenseTime = Instant.now();
         ExpenseResponse response = new ExpenseResponse(
-                UUID.randomUUID(), description, amount, category,
+                UUID.randomUUID(), description, amount, category, expenseTime,
                 Instant.now(), Instant.now());
 
         when(expenseService.getExpensesForUser(eq(EMAIL), eq(null))).thenReturn(List.of(response));
@@ -171,10 +177,11 @@ class ExpenseControllerTest {
         String description = "Updated";
         BigDecimal amount = BigDecimal.valueOf(4.5);
         ExpenseCategory category = ExpenseCategory.HOUSING;
+        Instant expenseTime = Instant.now();
         UpdateExpenseRequest request = new UpdateExpenseRequest(
-                description, amount, category);
+                description, amount, category, expenseTime);
         ExpenseResponse response = new ExpenseResponse(
-                token, description, amount, category,
+                token, description, amount, category, expenseTime,
                 Instant.now(), Instant.now());
 
         when(expenseService.updateExpense(eq(token), any(UpdateExpenseRequest.class), eq(EMAIL)))

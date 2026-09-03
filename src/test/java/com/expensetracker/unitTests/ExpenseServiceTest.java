@@ -18,8 +18,11 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.math.BigDecimal;
+import java.time.Duration;
+import java.time.Instant;
 import java.time.LocalDateTime;
 import java.time.ZoneOffset;
+import java.time.temporal.TemporalAmount;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -63,8 +66,9 @@ class ExpenseServiceTest {
             String description = "Weekly Groceries at Walmart";
             BigDecimal amount = BigDecimal.valueOf(50.00);
             ExpenseCategory category = ExpenseCategory.GROCERIES;
+            Instant expenseTime = Instant.now();
             CreateExpenseRequest request = new CreateExpenseRequest(
-                    description, amount, null, category);
+                    description, amount, null, expenseTime, category);
 
             when(expenseRepository.save(any(Expense.class))).thenAnswer(inv -> inv.getArgument(0));
 
@@ -81,6 +85,7 @@ class ExpenseServiceTest {
             assertThat(response.description()).isEqualTo(description);
             assertThat(response.amount()).isEqualByComparingTo(amount);
             assertThat(response.category()).isEqualTo(category);
+            assertThat(response.expenseTime()).isEqualTo(expenseTime);
         }
 
         @Test
@@ -89,9 +94,10 @@ class ExpenseServiceTest {
             String description = "Rent";
             BigDecimal amount = BigDecimal.valueOf(1200);
             ExpenseCategory category = ExpenseCategory.HOUSING;
+            Instant expenseTime = Instant.now();
             when(userRepository.findByEmail(EMAIL)).thenReturn(Optional.of(user));
             CreateExpenseRequest request = new CreateExpenseRequest(
-                    description, amount, providedToken, category);
+                    description, amount, providedToken, expenseTime, category);
 
             when(expenseRepository.save(any(Expense.class))).thenAnswer(inv -> inv.getArgument(0));
 
@@ -103,6 +109,7 @@ class ExpenseServiceTest {
             assertThat(captor.getValue().getDescription()).isEqualTo(description);
             assertThat(captor.getValue().getAmount()).isEqualByComparingTo(amount);
             assertThat(captor.getValue().getCategory()).isEqualTo(category);
+            assertThat(captor.getValue().getExpenseTime()).isEqualTo(expenseTime);
         }
 
         @Test
@@ -110,9 +117,10 @@ class ExpenseServiceTest {
             String description = "Dinner at Jack Astors";
             BigDecimal amount = BigDecimal.valueOf(10);
             ExpenseCategory category = ExpenseCategory.EATING_OUT;
+            Instant expenseTime = Instant.now();
             when(userRepository.findByEmail(EMAIL)).thenReturn(Optional.empty());
             CreateExpenseRequest request = new CreateExpenseRequest(
-                    description, amount, null, category);
+                    description, amount, null, expenseTime, category);
 
             assertThatThrownBy(() -> expenseService.createExpense(request, EMAIL))
                     .isInstanceOf(RuntimeException.class)
@@ -133,7 +141,8 @@ class ExpenseServiceTest {
             String description = "Coffee";
             BigDecimal amount = BigDecimal.valueOf(4.5);
             ExpenseCategory category = ExpenseCategory.EATING_OUT;
-            Expense expense = buildExpense(token, description, amount, category);
+            Instant expenseTime = Instant.now();
+            Expense expense = buildExpense(token, description, amount, expenseTime, category);
 
             when(userRepository.findByEmail(EMAIL)).thenReturn(Optional.of(user));
             when(expenseRepository.findByUserIdAndToken(USERID, token)).thenReturn(Optional.of(expense));
@@ -144,6 +153,7 @@ class ExpenseServiceTest {
             assertThat(response.description()).isEqualTo(description);
             assertThat(response.amount()).isEqualTo(amount);
             assertThat(response.category()).isEqualTo(category);
+            assertThat(response.expenseTime()).isEqualTo(expenseTime);
         }
 
         @Test
@@ -184,8 +194,9 @@ class ExpenseServiceTest {
             String e2Description = "A";
             BigDecimal e2Amount = BigDecimal.TEN;
             ExpenseCategory e2Category = ExpenseCategory.HOUSING;
-            Expense e1 = buildExpense(UUID.randomUUID(), e1Description, e1Amount, e1Category);
-            Expense e2 = buildExpense(UUID.randomUUID(), e2Description, e2Amount, e2Category);
+            Instant expenseTime = Instant.now();
+            Expense e1 = buildExpense(UUID.randomUUID(), e1Description, e1Amount, expenseTime, e1Category);
+            Expense e2 = buildExpense(UUID.randomUUID(), e2Description, e2Amount, expenseTime, e2Category);
 
             when(expenseRepository.findByUserId(user.getId())).thenReturn(List.of(e1, e2));
 
@@ -201,7 +212,8 @@ class ExpenseServiceTest {
             String e1Description = "B";
             BigDecimal e1Amount = BigDecimal.ONE;
             ExpenseCategory e1Category = ExpenseCategory.EATING_OUT;
-            Expense e1 = buildExpense(UUID.randomUUID(), e1Description, e1Amount, e1Category);
+            Instant expenseTime = Instant.now();
+            Expense e1 = buildExpense(UUID.randomUUID(), e1Description, e1Amount, expenseTime, e1Category);
 
             when(expenseRepository.findByUserIdAndCategory(user.getId(), e1Category))
                     .thenReturn(List.of(e1));
@@ -212,6 +224,7 @@ class ExpenseServiceTest {
             assertThat(result.get(0).category()).isEqualTo(e1Category);
             assertThat(result.get(0).amount()).isEqualTo(e1Amount);
             assertThat(result.get(0).description()).isEqualTo(e1Description);
+            assertThat(result.get(0).expenseTime()).isEqualTo(expenseTime);
             verify(expenseRepository, never()).findByUserId(any());
         }
 
@@ -240,20 +253,23 @@ class ExpenseServiceTest {
             BigDecimal newAmount = BigDecimal.valueOf(10);
             ExpenseCategory oldCategory = ExpenseCategory.EATING_OUT;
             ExpenseCategory newCategory = ExpenseCategory.HOUSING;
-            Expense existing = buildExpense(token, oldDescription, oldAmount, oldCategory);
+            Instant expenseTime = Instant.now();
+            Instant newExpenseTime = expenseTime.plus(Duration.ofMinutes(10));
+            Expense existing = buildExpense(token, oldDescription, oldAmount, expenseTime, oldCategory);
 
             when(userRepository.findByEmail(EMAIL)).thenReturn(Optional.of(user));
             when(expenseRepository.findByUserIdAndToken(USERID, token)).thenReturn(Optional.of(existing));
             when(expenseRepository.save(any(Expense.class))).thenAnswer(inv -> inv.getArgument(0));
 
             UpdateExpenseRequest request = new UpdateExpenseRequest(
-                    newDescription, newAmount, newCategory);
+                    newDescription, newAmount, newCategory, newExpenseTime);
 
             ExpenseResponse response = expenseService.updateExpense(token, request, EMAIL);
 
             assertThat(response.description()).isEqualTo(newDescription);
             assertThat(response.amount()).isEqualByComparingTo(newAmount);
             assertThat(response.category()).isEqualTo(newCategory);
+            assertThat(response.expenseTime()).isEqualTo(newExpenseTime);
         }
 
         @Test
@@ -264,20 +280,23 @@ class ExpenseServiceTest {
             BigDecimal amount = BigDecimal.valueOf(20);
             ExpenseCategory oldCategory = ExpenseCategory.EATING_OUT;
             ExpenseCategory newCategory = ExpenseCategory.HOUSING;
-            Expense existing = buildExpense(token, oldDescription, amount, oldCategory);
+            Instant expenseTime = Instant.now();
+            Instant newExpenseTime = expenseTime.plus(Duration.ofMinutes(10));
+            Expense existing = buildExpense(token, oldDescription, amount, expenseTime, oldCategory);
 
             when(userRepository.findByEmail(EMAIL)).thenReturn(Optional.of(user));
             when(expenseRepository.findByUserIdAndToken(USERID, token)).thenReturn(Optional.of(existing));
             when(expenseRepository.save(any(Expense.class))).thenAnswer(inv -> inv.getArgument(0));
 
             UpdateExpenseRequest request = new UpdateExpenseRequest(
-                    newDescription, null, newCategory);
+                    newDescription, null, newCategory, newExpenseTime);
 
             ExpenseResponse response = expenseService.updateExpense(token, request, EMAIL);
 
             assertThat(response.description()).isEqualTo(newDescription);
             assertThat(response.amount()).isEqualByComparingTo(amount);
             assertThat(response.category()).isEqualTo(newCategory);
+            assertThat(response.expenseTime()).isEqualTo(newExpenseTime);
         }
 
         @Test
@@ -286,10 +305,11 @@ class ExpenseServiceTest {
             String description = "New desc";
             BigDecimal amount = BigDecimal.valueOf(20);
             ExpenseCategory category = ExpenseCategory.EATING_OUT;
+            Instant expenseTime = Instant.now();
             when(userRepository.findByEmail(EMAIL)).thenReturn(Optional.of(user));
             when(expenseRepository.findByUserIdAndToken(USERID, token)).thenReturn(Optional.empty());
 
-            UpdateExpenseRequest request = new UpdateExpenseRequest(description, amount, category);
+            UpdateExpenseRequest request = new UpdateExpenseRequest(description, amount, category, expenseTime);
 
             assertThatThrownBy(() -> expenseService.updateExpense(token, request, EMAIL))
                     .isInstanceOf(RuntimeException.class)
@@ -310,7 +330,8 @@ class ExpenseServiceTest {
             String description = "To delete";
             BigDecimal amount = BigDecimal.ONE;
             ExpenseCategory category = ExpenseCategory.EATING_OUT;
-            Expense existing = buildExpense(token, description, amount, category);
+            Instant expenseTime = Instant.now();
+            Expense existing = buildExpense(token, description, amount, expenseTime, category);
 
             when(userRepository.findByEmail(EMAIL)).thenReturn(Optional.of(user));
             when(expenseRepository.findByUserIdAndToken(USERID, token)).thenReturn(Optional.of(existing));
@@ -346,13 +367,14 @@ class ExpenseServiceTest {
         }
     }
 
-    private Expense buildExpense(UUID token, String description, BigDecimal amount, ExpenseCategory category) {
+    private Expense buildExpense(UUID token, String description, BigDecimal amount, Instant expenseTime, ExpenseCategory category) {
         Expense expense = new Expense();
         expense.setToken(token);
         expense.setDescription(description);
         expense.setAmount(amount);
         expense.setCategory(category);
         expense.setUser(user);
+        expense.setExpenseTime(expenseTime);
         expense.setCreatedTime(LocalDateTime.now().toInstant(ZoneOffset.UTC));
         expense.setUpdatedTime(LocalDateTime.now().toInstant(ZoneOffset.UTC));
         return expense;

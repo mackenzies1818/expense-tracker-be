@@ -11,6 +11,7 @@ import com.expensetracker.repository.UserRepository;
 import com.expensetracker.util.ExpenseCategory;
 import org.springframework.stereotype.Service;
 
+import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
 
@@ -43,6 +44,12 @@ public class ExpenseService {
             token = UUID.randomUUID();
         }
         expense.setToken(token);
+
+        Instant expenseTime = request.expenseTime();
+        if (expenseTime == null) {
+            expenseTime = Instant.now();
+        }
+        expense.setExpenseTime(expenseTime);
         System.out.println("creating expense with token: "+expense.getToken());
 
         return mapExpensetoExpenseResponse(expenseRepository.save(expense));
@@ -84,6 +91,9 @@ public class ExpenseService {
         if (request.amount() != null) {
             expense.setAmount(request.amount());
         }
+        if (request.expenseTime() != null) {
+            expense.setExpenseTime(request.expenseTime());
+        }
         return  mapExpensetoExpenseResponse(expenseRepository.save(expense));
 
     }
@@ -102,6 +112,7 @@ public class ExpenseService {
                 expense.getDescription(),
                 expense.getAmount(),
                 expense.getCategory(),
+                expense.getExpenseTime(),
                 expense.getCreatedTime(),
                 expense.getUpdatedTime()
         );

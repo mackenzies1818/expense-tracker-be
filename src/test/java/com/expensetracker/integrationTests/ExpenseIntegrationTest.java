@@ -9,6 +9,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.http.*;
 
 import java.math.BigDecimal;
+import java.time.Duration;
 import java.time.Instant;
 import java.util.UUID;
 
@@ -23,9 +24,10 @@ class ExpenseIntegrationTest extends AbstractIntegrationTest {
         String description = "Dinner";
         BigDecimal amount = BigDecimal.valueOf(45.50);
         ExpenseCategory category = ExpenseCategory.EATING_OUT;
+        Instant expenseTime = Instant.now();
         // Create
         CreateExpenseRequest createRequest = new CreateExpenseRequest(
-                description, amount, null, category);
+                description, amount, null, expenseTime, category);
         ResponseEntity<ExpenseResponse> createResponse = restTemplate.exchange(
                 "/api/expenses", HttpMethod.POST,
                 new HttpEntity<>(createRequest, headers), ExpenseResponse.class);
@@ -36,6 +38,7 @@ class ExpenseIntegrationTest extends AbstractIntegrationTest {
         assertThat(created.description()).isEqualTo(description);
         assertThat(created.amount()).isEqualByComparingTo(amount);
         assertThat(created.category()).isEqualTo(category);
+        assertThat(created.expenseTime()).isEqualTo(expenseTime);
         assertThat(created.createdTime()).isNotNull();
         assertThat(created.updatedTime()).isNotNull();
         UUID expenseToken = created.expenseToken();
@@ -48,6 +51,7 @@ class ExpenseIntegrationTest extends AbstractIntegrationTest {
         assertThat(getResponse.getBody()).isNotNull();
         assertThat(getResponse.getBody().description()).isEqualTo(description);
         assertThat(getResponse.getBody().category()).isEqualTo(category);
+        assertThat(getResponse.getBody().expenseTime()).isEqualTo(expenseTime);
         assertThat(getResponse.getBody().amount()).isEqualByComparingTo(amount);
 
         // Read all
@@ -61,8 +65,9 @@ class ExpenseIntegrationTest extends AbstractIntegrationTest {
         String updatedDescription = "Dinner with friends";
         BigDecimal updatedAmount = BigDecimal.valueOf(60);
         ExpenseCategory updatedExpenseCategory = ExpenseCategory.EATING_OUT;
+        Instant updatedExpenseTime = expenseTime.plus(Duration.ofMinutes(10));
         UpdateExpenseRequest updateRequest = new UpdateExpenseRequest(
-                updatedDescription, BigDecimal.valueOf(60), ExpenseCategory.EATING_OUT);
+                updatedDescription, BigDecimal.valueOf(60), ExpenseCategory.EATING_OUT, updatedExpenseTime);
         ResponseEntity<ExpenseResponse> updateResponse = restTemplate.exchange(
                 "/api/expenses/{token}", HttpMethod.PUT,
                 new HttpEntity<>(updateRequest, headers), ExpenseResponse.class, expenseToken);
@@ -71,6 +76,7 @@ class ExpenseIntegrationTest extends AbstractIntegrationTest {
         assertThat(updateResponse.getBody().description()).isEqualTo(updatedDescription);
         assertThat(updateResponse.getBody().category()).isEqualTo(updatedExpenseCategory);
         assertThat(updateResponse.getBody().amount()).isEqualByComparingTo(updatedAmount);
+        assertThat(updateResponse.getBody().expenseTime()).isEqualTo(updatedExpenseTime);
         assertThat(updateResponse.getBody().updatedTime()).isNotEqualTo(createdTime);
 
         // Delete
@@ -95,15 +101,16 @@ class ExpenseIntegrationTest extends AbstractIntegrationTest {
         String description1 = "Lunch";
         BigDecimal amount1 = BigDecimal.TEN;
         ExpenseCategory category1 = ExpenseCategory.EATING_OUT;
-
+        Instant expenseTime1 = Instant.now();
         String description2 = "Rent";
         BigDecimal amount2 = BigDecimal.valueOf(1200);
         ExpenseCategory category2 = ExpenseCategory.HOUSING;
+        Instant expenseTime2 = expenseTime1.plus(Duration.ofMinutes(10));
         restTemplate.exchange("/api/expenses", HttpMethod.POST,
-                new HttpEntity<>(new CreateExpenseRequest(description1, amount1, null, category1), headers),
+                new HttpEntity<>(new CreateExpenseRequest(description1, amount1, null, expenseTime1, category1), headers),
                 ExpenseResponse.class);
         restTemplate.exchange("/api/expenses", HttpMethod.POST,
-                new HttpEntity<>(new CreateExpenseRequest(description2, amount2, null, category2), headers),
+                new HttpEntity<>(new CreateExpenseRequest(description2, amount2, null, expenseTime2, category2), headers),
                 ExpenseResponse.class);
 
         ResponseEntity<ExpenseResponse[]> response = restTemplate.exchange(
@@ -114,6 +121,7 @@ class ExpenseIntegrationTest extends AbstractIntegrationTest {
         assertThat(response.getBody()[0].description()).isEqualTo(description1);
         assertThat(response.getBody()[0].amount()).isEqualByComparingTo(amount1);
         assertThat(response.getBody()[0].category()).isEqualTo(category1);
+        assertThat(response.getBody()[0].expenseTime()).isEqualTo(expenseTime1);
     }
 
     @Test
@@ -137,8 +145,9 @@ class ExpenseIntegrationTest extends AbstractIntegrationTest {
         String description = "User A's expense";
         BigDecimal amount = BigDecimal.TEN;
         ExpenseCategory category = ExpenseCategory.EATING_OUT;
+        Instant expenseTime = Instant.now();
         restTemplate.exchange("/api/expenses", HttpMethod.POST,
-                new HttpEntity<>(new CreateExpenseRequest(description, amount,  null, category),
+                new HttpEntity<>(new CreateExpenseRequest(description, amount,  null, expenseTime, category),
                         authHeaders(userAToken)),
                 ExpenseResponse.class);
 
@@ -167,9 +176,10 @@ class ExpenseIntegrationTest extends AbstractIntegrationTest {
         String description = "User A's expense";
         BigDecimal amount = BigDecimal.TEN;
         ExpenseCategory category = ExpenseCategory.EATING_OUT;
+        Instant expenseTime = Instant.now();
         ResponseEntity<ExpenseResponse> createResponse = restTemplate.exchange(
                 "/api/expenses", HttpMethod.POST,
-                new HttpEntity<>(new CreateExpenseRequest(description, amount, null, category),
+                new HttpEntity<>(new CreateExpenseRequest(description, amount, null, expenseTime, category),
                         authHeaders(userAToken)),
                 ExpenseResponse.class);
         assertThat(createResponse.getBody()).isNotNull();

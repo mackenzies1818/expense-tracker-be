@@ -11,6 +11,7 @@ public record ExpenseResponse (
         String description,
         BigDecimal amount,
         ExpenseCategory category,
+        Instant expenseTime,
         Instant createdTime,
         Instant updatedTime
 ) {}
