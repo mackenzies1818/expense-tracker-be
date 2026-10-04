@@ -59,6 +59,11 @@ public class GlobalExceptionHandler {
         return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(body);
     }
 
+    @ExceptionHandler(InvalidFilterException.class)
+    public ResponseEntity<ErrorResponse> handleInvalidFilter(InvalidFilterException ex , HttpServletRequest request) {
+        return build(HttpStatus.BAD_REQUEST, ex.getMessage(), request);
+    }
+
     // Catch-all safety net — never leak stack traces or internal messages to clients
     @ExceptionHandler(Exception.class)
     public ResponseEntity<ErrorResponse> handleUnexpected(

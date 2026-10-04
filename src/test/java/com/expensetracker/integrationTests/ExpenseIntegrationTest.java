@@ -1,20 +1,19 @@
 package com.expensetracker.integrationTests;
 
-import com.expensetracker.dto.CreateExpenseRequest;
-import com.expensetracker.dto.ErrorResponse;
-import com.expensetracker.dto.ExpenseResponse;
-import com.expensetracker.dto.UpdateExpenseRequest;
+import com.expensetracker.dto.*;
 import com.expensetracker.util.ExpenseCategory;
 import org.junit.jupiter.api.Test;
+import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.http.*;
 
 import java.math.BigDecimal;
 import java.time.Duration;
 import java.time.Instant;
+import java.time.LocalDateTime;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
-
+//TODO: fix fitler with categories
 class ExpenseIntegrationTest extends AbstractIntegrationTest {
 
     @Test
@@ -55,11 +54,11 @@ class ExpenseIntegrationTest extends AbstractIntegrationTest {
         assertThat(getResponse.getBody().amount()).isEqualByComparingTo(amount);
 
         // Read all
-        ResponseEntity<ExpenseResponse[]> listResponse = restTemplate.exchange(
+        ResponseEntity<PagedResponse<ExpenseResponse>> listResponse = restTemplate.exchange(
                 "/api/expenses", HttpMethod.GET,
-                new HttpEntity<>(headers), ExpenseResponse[].class);
+                new HttpEntity<>(headers), new ParameterizedTypeReference<PagedResponse<ExpenseResponse>>() {});
         assertThat(listResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
-        assertThat(listResponse.getBody()).hasSize(1);
+        assertThat(listResponse.getBody().getData()).hasSize(1);
 
         // Update
         String updatedDescription = "Dinner with friends";
@@ -113,15 +112,16 @@ class ExpenseIntegrationTest extends AbstractIntegrationTest {
                 new HttpEntity<>(new CreateExpenseRequest(description2, amount2, null, expenseTime2, category2), headers),
                 ExpenseResponse.class);
 
-        ResponseEntity<ExpenseResponse[]> response = restTemplate.exchange(
+        ResponseEntity<PagedResponse<ExpenseResponse>> response = restTemplate.exchange(
                 "/api/expenses?expenseCategory=EATING_OUT", HttpMethod.GET,
-                new HttpEntity<>(headers), ExpenseResponse[].class);
+                new HttpEntity<>(headers),
+                new ParameterizedTypeReference<PagedResponse<ExpenseResponse>>() {});
 
-        assertThat(response.getBody()).hasSize(1);
-        assertThat(response.getBody()[0].description()).isEqualTo(description1);
-        assertThat(response.getBody()[0].amount()).isEqualByComparingTo(amount1);
-        assertThat(response.getBody()[0].category()).isEqualTo(category1);
-        assertThat(response.getBody()[0].expenseTime()).isEqualTo(expenseTime1);
+        assertThat(response.getBody().getData()).hasSize(1);
+        assertThat(response.getBody().getData().get(0).description()).isEqualTo(description1);
+        assertThat(response.getBody().getData().get(0).amount()).isEqualByComparingTo(amount1);
+        assertThat(response.getBody().getData().get(0).category()).isEqualTo(category1);
+        assertThat(response.getBody().getData().get(0).expenseTime()).isEqualTo(expenseTime1);
     }
 
     @Test
@@ -150,12 +150,11 @@ class ExpenseIntegrationTest extends AbstractIntegrationTest {
                 new HttpEntity<>(new CreateExpenseRequest(description, amount,  null, expenseTime, category),
                         authHeaders(userAToken)),
                 ExpenseResponse.class);
-
-        ResponseEntity<ExpenseResponse[]> userBList = restTemplate.exchange(
+        ResponseEntity<PagedResponse<ExpenseResponse>> userBList = restTemplate.exchange(
                 "/api/expenses", HttpMethod.GET,
-                new HttpEntity<>(authHeaders(userBToken)), ExpenseResponse[].class);
+                new HttpEntity<>(authHeaders(userBToken)), new ParameterizedTypeReference<PagedResponse<ExpenseResponse>>() {});
 
-        assertThat(userBList.getBody()).isEmpty();
+        assertThat(userBList.getBody().getData()).isEmpty();
     }
 
     /**
@@ -192,5 +191,100 @@ class ExpenseIntegrationTest extends AbstractIntegrationTest {
         assertThat(userBGetAttempt.getStatusCode())
                 .as("User B should not be able to fetch User A's expense by token")
                 .isIn(HttpStatus.NOT_FOUND, HttpStatus.FORBIDDEN);
+    }
+
+    @Test
+    void shouldFilterExpensesByMultipleCategories() {
+        HttpHeaders headers = authHeaders(registerAndGetToken(uniqueEmail(), "Password123!"));
+        Instant t = Instant.now();
+        createExpense(headers, "Lunch", BigDecimal.TEN, ExpenseCategory.EATING_OUT, t);
+        createExpense(headers, "Rent", BigDecimal.valueOf(1200), ExpenseCategory.HOUSING, t.plusSeconds(60));
+        createExpense(headers, "Movie", BigDecimal.valueOf(20), ExpenseCategory.FUN, t.plusSeconds(120));
+
+        ResponseEntity<PagedResponse<ExpenseResponse>> response = restTemplate.exchange(
+                "/api/expenses?expenseCategory=EATING_OUT&expenseCategory=HOUSING", HttpMethod.GET,
+                new HttpEntity<>(headers),
+                new ParameterizedTypeReference<PagedResponse<ExpenseResponse>>() {});
+
+        assertThat(response.getBody().getData()).hasSize(2)
+                .extracting(ExpenseResponse::category)
+                .containsExactlyInAnyOrder(ExpenseCategory.EATING_OUT, ExpenseCategory.HOUSING);
+    }
+
+    @Test
+    void shouldFilterExpensesByDateRange() {
+        LocalDateTime startDate = LocalDateTime.of(2026, 8, 1, 12, 12);
+        LocalDateTime endDate = LocalDateTime.of(2026, 8, 30, 12, 12);
+        HttpHeaders headers = authHeaders(registerAndGetToken(uniqueEmail(), "Password123!"));
+        createExpense(headers, "Old", BigDecimal.TEN, ExpenseCategory.EATING_OUT, Instant.parse("2026-01-01T00:00:00Z"));
+        createExpense(headers, "InRange", BigDecimal.TEN, ExpenseCategory.EATING_OUT, Instant.parse("2026-08-15T00:00:00Z"));
+        createExpense(headers, "TooLate", BigDecimal.TEN, ExpenseCategory.EATING_OUT, Instant.parse("2026-12-01T00:00:00Z"));
+
+        ResponseEntity<PagedResponse<ExpenseResponse>> response = restTemplate.exchange(
+                "/api/expenses?startDate="+startDate.toString()+"&endDate="+endDate.toString(), HttpMethod.GET,
+                new HttpEntity<>(headers),
+                new ParameterizedTypeReference<PagedResponse<ExpenseResponse>>() {});
+
+        assertThat(response.getBody().getData()).hasSize(1);
+        assertThat(response.getBody().getData().get(0).description()).isEqualTo("InRange");
+    }
+
+    @Test
+    void shouldSortExpensesByAmountAscending() {
+        HttpHeaders headers = authHeaders(registerAndGetToken(uniqueEmail(), "Password123!"));
+        Instant t = Instant.now();
+        createExpense(headers, "Big", BigDecimal.valueOf(100), ExpenseCategory.EATING_OUT, t);
+        createExpense(headers, "Small", BigDecimal.valueOf(5), ExpenseCategory.EATING_OUT, t.plusSeconds(60));
+        createExpense(headers, "Medium", BigDecimal.valueOf(50), ExpenseCategory.EATING_OUT, t.plusSeconds(120));
+
+        ResponseEntity<PagedResponse<ExpenseResponse>> response = restTemplate.exchange(
+                "/api/expenses?sortBy=amount&sortOrder=asc", HttpMethod.GET,
+                new HttpEntity<>(headers),
+                new ParameterizedTypeReference<PagedResponse<ExpenseResponse>>() {});
+
+        assertThat(response.getBody().getData())
+                .extracting(ExpenseResponse::description)
+                .containsExactly("Small", "Medium", "Big");
+    }
+
+    @Test
+    void shouldPaginateResults() {
+        HttpHeaders headers = authHeaders(registerAndGetToken(uniqueEmail(), "Password123!"));
+        Instant t = Instant.now();
+        for (int i = 0; i < 15; i++) {
+            createExpense(headers, "Expense " + i, BigDecimal.TEN, ExpenseCategory.EATING_OUT, t.plusSeconds(i));
+        }
+
+        ResponseEntity<PagedResponse<ExpenseResponse>> page1 = restTemplate.exchange(
+                "/api/expenses?page=0&pageSize=10", HttpMethod.GET,
+                new HttpEntity<>(headers),
+                new ParameterizedTypeReference<PagedResponse<ExpenseResponse>>() {});
+        assertThat(page1.getBody().getData()).hasSize(10);
+        assertThat(page1.getBody().getTotalItems()).isEqualTo(15);
+        assertThat(page1.getBody().getTotalPages()).isEqualTo(2);
+
+        ResponseEntity<PagedResponse<ExpenseResponse>> page2 = restTemplate.exchange(
+                "/api/expenses?page=1&pageSize=10", HttpMethod.GET,
+                new HttpEntity<>(headers),
+                new ParameterizedTypeReference<PagedResponse<ExpenseResponse>>() {});
+        assertThat(page2.getBody().getData()).hasSize(5);
+    }
+
+    @Test
+    void shouldReturn400WhenSortFieldIsInvalid() {
+        HttpHeaders headers = authHeaders(registerAndGetToken(uniqueEmail(), "Password123!"));
+
+        ResponseEntity<ErrorResponse> response = restTemplate.exchange(
+                "/api/expenses?sortBy=notAField", HttpMethod.GET,
+                new HttpEntity<>(headers), ErrorResponse.class);
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+    }
+
+    private void createExpense(HttpHeaders headers, String description, BigDecimal amount,
+                               ExpenseCategory category, Instant expenseTime) {
+        restTemplate.exchange("/api/expenses", HttpMethod.POST,
+                new HttpEntity<>(new CreateExpenseRequest(description, amount, null, expenseTime, category), headers),
+                ExpenseResponse.class);
     }
 }

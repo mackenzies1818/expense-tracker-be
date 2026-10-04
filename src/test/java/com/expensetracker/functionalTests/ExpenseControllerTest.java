@@ -2,23 +2,27 @@ package com.expensetracker.functionalTests;
 
 import com.expensetracker.auth.SecurityConfig;
 import com.expensetracker.controller.ExpenseController;
-import com.expensetracker.dto.CreateExpenseRequest;
-import com.expensetracker.dto.ExpenseResponse;
-import com.expensetracker.dto.UpdateExpenseRequest;
+import com.expensetracker.dto.*;
+import com.expensetracker.exceptions.InvalidFilterException;
 import com.expensetracker.services.ExpenseService;
 import com.expensetracker.util.ExpenseCategory;
+import org.mockito.ArgumentCaptor;
 import org.springframework.context.annotation.Import;
+import org.springframework.data.domain.Sort;
 import tools.jackson.databind.json.JsonMapper; // was com.fasterxml.jackson.databind.ObjectMapper
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest; // new package
 import org.springframework.test.context.bean.override.mockito.MockitoBean; // was @MockBean
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.test.web.servlet.MockMvc;
-
+import org.junit.jupiter.api.Nested;
 import java.math.BigDecimal;
 import java.time.Instant;
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.UUID;
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.Mockito.*;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
@@ -139,34 +143,107 @@ class ExpenseControllerTest {
 
     // ---------- GET /api/expenses ----------
 
-    @Test
-    void getExpenses_shouldReturnListWithoutCategoryFilter() throws Exception {
-        String description = "Coffee";
-        BigDecimal amount = BigDecimal.valueOf(4.5);
-        ExpenseCategory category = ExpenseCategory.EATING_OUT;
-        Instant expenseTime = Instant.now();
-        ExpenseResponse response = new ExpenseResponse(
-                UUID.randomUUID(), description, amount, category, expenseTime,
-                Instant.now(), Instant.now());
+    @Nested
+    class GetExpenses {
 
-        when(expenseService.getExpensesForUser(eq(EMAIL), eq(null))).thenReturn(List.of(response));
+        @Test
+        void shouldReturnPagedExpensesWithNoFilters() throws Exception {
+            UUID token = UUID.randomUUID();
+            String description = "Updated";
+            BigDecimal amount = BigDecimal.valueOf(4.5);
+            ExpenseCategory category = ExpenseCategory.HOUSING;
+            Instant expenseTime = Instant.now();
+            ExpenseResponse response = new ExpenseResponse(
+                    token, description, amount, category, expenseTime,
+                    Instant.now(), Instant.now());
+            PagedResponse<ExpenseResponse> paged = new PagedResponse<>(List.of(response), 0, 10, 1, 1);
 
-        mockMvc.perform(get("/api/expenses")
-                        .with(jwt().jwt(j -> j.subject(EMAIL))))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.length()").value(1));
-    }
+            when(expenseService.getExpensesForUser(eq(EMAIL), any(ExpenseFilter.class))).thenReturn(paged);
 
-    @Test
-    void getExpenses_shouldPassCategoryFilterThrough() throws Exception {
-        ExpenseCategory category = ExpenseCategory.EATING_OUT;
-        when(expenseService.getExpensesForUser(eq(EMAIL), eq(category)))
-                .thenReturn(List.of());
+            mockMvc.perform(get("/api/expenses")
+                            .with(jwt().jwt(j -> j.subject(EMAIL))))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.data.length()").value(1))
+                    .andExpect(jsonPath("$.totalItems").value(1));
+        }
 
-        mockMvc.perform(get("/api/expenses")
-                        .param("expenseCategory", String.valueOf(category))
-                        .with(jwt().jwt(j -> j.subject(EMAIL))))
-                .andExpect(status().isOk());
+        @Test
+        void shouldPassDateRangeFilterThrough() throws Exception {
+            ArgumentCaptor<ExpenseFilter> captor = ArgumentCaptor.forClass(ExpenseFilter.class);
+            when(expenseService.getExpensesForUser(eq(EMAIL), any(ExpenseFilter.class)))
+                    .thenReturn(new PagedResponse<>(List.of(), 0, 10, 0, 0));
+            LocalDateTime startDate = LocalDateTime.of(2026, 8, 1, 12, 12);
+            LocalDateTime endDate = LocalDateTime.of(2026, 8, 31, 12, 12);
+            mockMvc.perform(get("/api/expenses")
+                            .param("startDate", startDate.toString())
+                            .param("endDate", endDate.toString())
+                            .with(jwt().jwt(j -> j.subject(EMAIL))))
+                    .andExpect(status().isOk());
+
+            verify(expenseService).getExpensesForUser(eq(EMAIL), captor.capture());
+            assertThat(captor.getValue().getStartDate()).isEqualTo(startDate);
+            assertThat(captor.getValue().getEndDate()).isEqualTo(endDate);
+        }
+
+        @Test
+        void shouldPassMultipleCategoriesThrough() throws Exception {
+            ArgumentCaptor<ExpenseFilter> captor = ArgumentCaptor.forClass(ExpenseFilter.class);
+            when(expenseService.getExpensesForUser(eq(EMAIL), any(ExpenseFilter.class)))
+                    .thenReturn(new PagedResponse<>(List.of(), 0, 10, 0, 0));
+
+            mockMvc.perform(get("/api/expenses")
+                            .param("expenseCategory", ExpenseCategory.EATING_OUT.name(), ExpenseCategory.HOUSING.name())
+                            .with(jwt().jwt(j -> j.subject(EMAIL))))
+                    .andExpect(status().isOk());
+            verify(expenseService).getExpensesForUser(eq(EMAIL), captor.capture());
+            assertThat(captor.getValue().getCategories())
+                    .containsExactlyInAnyOrder(ExpenseCategory.EATING_OUT, ExpenseCategory.HOUSING);
+        }
+
+        @Test
+        void shouldPassSortAndPaginationThrough() throws Exception {
+            ArgumentCaptor<ExpenseFilter> captor = ArgumentCaptor.forClass(ExpenseFilter.class);
+            when(expenseService.getExpensesForUser(eq(EMAIL), any(ExpenseFilter.class)))
+                    .thenReturn(new PagedResponse<>(List.of(), 2, 5, 0, 0));
+
+            mockMvc.perform(get("/api/expenses")
+                            .param("sortBy", "amount")
+                            .param("sortOrder", "asc")
+                            .param("page", "2")
+                            .param("pageSize", "5")
+                            .with(jwt().jwt(j -> j.subject(EMAIL))))
+                    .andExpect(status().isOk());
+
+            verify(expenseService).getExpensesForUser(eq(EMAIL), captor.capture());
+            ExpenseFilter captured = captor.getValue();
+            assertThat(captured.getSortBy()).isEqualTo("amount");
+            assertThat(captured.getSortOrder()).isEqualTo(Sort.Direction.ASC);
+            assertThat(captured.getPage()).isEqualTo(2);
+            assertThat(captured.getPageSize()).isEqualTo(5);
+        }
+
+        @Test
+        void shouldReturn400WhenServiceThrowsInvalidFilterException() throws Exception {
+            String errorMessage ="Invalid sortBy field";
+            when(expenseService.getExpensesForUser(eq(EMAIL), any(ExpenseFilter.class)))
+                    .thenThrow(new InvalidFilterException(errorMessage));
+
+            mockMvc.perform(get("/api/expenses")
+                            .param("sortBy", "whatever") // value doesn't matter — service is mocked
+                            .with(jwt().jwt(j -> j.subject(EMAIL))))
+                    .andExpect(status().isBadRequest())
+                    .andExpect(jsonPath("$.message").value(errorMessage));
+        }
+
+        @Test
+        void shouldReturn400WhenStartDateAfterEndDate() throws Exception {
+            mockMvc.perform(get("/api/expenses")
+                            .param("startDate", "2026-09-01")
+                            .param("endDate", "2026-08-01")
+                            .with(jwt().jwt(j -> j.subject(EMAIL))))
+                    .andExpect(status().isBadRequest())
+                    .andExpect(jsonPath("$.message").value("Invalid value for parameter 'startDate'"));
+        }
     }
 
     // ---------- PUT /api/expenses/{token} ----------

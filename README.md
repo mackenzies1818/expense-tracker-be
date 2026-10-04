@@ -39,6 +39,7 @@ OS name: "mac os x", version: "14.6", arch: "aarch64", family: "mac"
 https://start.spring.io/ - download cosas and import maven dependencies 
 
 build mvn project:
+note: make sure docker is running 
 `
 ./mvnw spring-boot:run
 `
@@ -132,3 +133,30 @@ For a modern Spring application, BCrypt is still a reasonable choice, although p
                 ↓
                 Controller
 There is a securitycontext that spring creates the authentication object after it verifies the JWT token, spring extracts the user and creates the object
+
+
+***Auth***
+JWT Claim:
+- jwt is a signed piece of json
+- - claim: key value pair inside the token represented in json 
+- claim insludes sub: who this token is about, exp: expiration, iat: issued at; can also add custom props
+
+**what is the difference between access token and refresh token:** 
+- both jwt generated with the type being different
+- access token: sent on every api acall, short lived
+- refresh token: sent only on auth refresh - proves that the user logged in recently and hasnt logged out
+
+
+***Auth Flow:***
+1. build the claim - the json payload
+2. created signed jwt using encryption algo - HS256 HMAC using SHA256, symmetric algorithm
+3. sign with MACSigner - using secret key, makes a cryptographic hash of heder + payload and adds to signature
+4. serialize 
+
+Token Validation:
+1. verify signature - recomputes expected signature and compares to actual
+2. check if token is expired
+
+nimbus vs jjwt:
+- jjwt more concise, nimbus more verbose
+- RS256 vs HS256, RS is asymmetric meaning a private key signs and a public key verifies so like another service can verify the tokens

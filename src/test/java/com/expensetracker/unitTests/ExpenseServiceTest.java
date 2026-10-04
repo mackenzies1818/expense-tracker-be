@@ -1,8 +1,7 @@
 package com.expensetracker.unitTests;
 
-import com.expensetracker.dto.CreateExpenseRequest;
-import com.expensetracker.dto.ExpenseResponse;
-import com.expensetracker.dto.UpdateExpenseRequest;
+import com.expensetracker.dto.*;
+import com.expensetracker.exceptions.InvalidFilterException;
 import com.expensetracker.model.Expense;
 import com.expensetracker.model.User;
 import com.expensetracker.repository.ExpenseRepository;
@@ -16,6 +15,8 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.data.domain.*;
+import org.springframework.data.jpa.domain.Specification;
 
 import java.math.BigDecimal;
 import java.time.Duration;
@@ -183,59 +184,98 @@ class ExpenseServiceTest {
     // ---------- getExpensesForUser ----------
 
     @Nested
-    class GetExpensesForUser {
+    class GetExpenses {
 
         @Test
-        void shouldReturnAllExpensesWhenCategoryIsNull() {
+        void shouldReturnAllExpensesWhenNoFiltersProvided() {
             when(userRepository.findByEmail(EMAIL)).thenReturn(Optional.of(user));
-            String e1Description = "B";
-            BigDecimal e1Amount = BigDecimal.ONE;
-            ExpenseCategory e1Category = ExpenseCategory.EATING_OUT;
-            String e2Description = "A";
-            BigDecimal e2Amount = BigDecimal.TEN;
-            ExpenseCategory e2Category = ExpenseCategory.HOUSING;
-            Instant expenseTime = Instant.now();
-            Expense e1 = buildExpense(UUID.randomUUID(), e1Description, e1Amount, expenseTime, e1Category);
-            Expense e2 = buildExpense(UUID.randomUUID(), e2Description, e2Amount, expenseTime, e2Category);
+            Expense e1 = buildExpense(UUID.randomUUID(), "B", BigDecimal.ONE, Instant.now(), ExpenseCategory.EATING_OUT);
+            Expense e2 = buildExpense(UUID.randomUUID(), "A", BigDecimal.TEN, Instant.now(), ExpenseCategory.HOUSING);
+            Page<Expense> page = new PageImpl<>(List.of(e1, e2), PageRequest.of(0, 10), 2);
 
-            when(expenseRepository.findByUserId(user.getId())).thenReturn(List.of(e1, e2));
+            when(expenseRepository.findAll(any(Specification.class), any(Pageable.class))).thenReturn(page);
 
-            List<ExpenseResponse> result = expenseService.getExpensesForUser(EMAIL, null);
+            PagedResponse<ExpenseResponse> result = expenseService.getExpensesForUser(EMAIL, new ExpenseFilter());
 
-            assertThat(result).hasSize(2);
-            verify(expenseRepository, never()).findByUserIdAndCategory(any(), any());
+            assertThat(result.getData()).hasSize(2);
+            assertThat(result.getTotalItems()).isEqualTo(2);
         }
 
         @Test
-        void shouldReturnFilteredExpensesWhenCategoryProvided() {
+        void shouldFilterByDateRange() {
             when(userRepository.findByEmail(EMAIL)).thenReturn(Optional.of(user));
-            String e1Description = "B";
-            BigDecimal e1Amount = BigDecimal.ONE;
-            ExpenseCategory e1Category = ExpenseCategory.EATING_OUT;
-            Instant expenseTime = Instant.now();
-            Expense e1 = buildExpense(UUID.randomUUID(), e1Description, e1Amount, expenseTime, e1Category);
+            ExpenseFilter filter = new ExpenseFilter();
+            filter.setStartDate(LocalDateTime.of(2026, 8, 1, 12, 12));
+            filter.setEndDate(LocalDateTime.of(2026, 8, 31, 12, 12));
 
-            when(expenseRepository.findByUserIdAndCategory(user.getId(), e1Category))
-                    .thenReturn(List.of(e1));
+            Expense e1 = buildExpense(UUID.randomUUID(), "Groceries", BigDecimal.TEN,
+                    Instant.parse("2026-08-15T10:00:00Z"), ExpenseCategory.EATING_OUT);
+            Page<Expense> page = new PageImpl<>(List.of(e1), PageRequest.of(0, 10), 1);
 
-            List<ExpenseResponse> result = expenseService.getExpensesForUser(EMAIL, e1Category);
+            when(expenseRepository.findAll(any(Specification.class), any(Pageable.class))).thenReturn(page);
 
-            assertThat(result).hasSize(1);
-            assertThat(result.get(0).category()).isEqualTo(e1Category);
-            assertThat(result.get(0).amount()).isEqualTo(e1Amount);
-            assertThat(result.get(0).description()).isEqualTo(e1Description);
-            assertThat(result.get(0).expenseTime()).isEqualTo(expenseTime);
-            verify(expenseRepository, never()).findByUserId(any());
+            PagedResponse<ExpenseResponse> result = expenseService.getExpensesForUser(EMAIL, filter);
+
+            assertThat(result.getData()).hasSize(1);
         }
 
         @Test
-        void shouldReturnEmptyListWhenNoExpenses() {
+        void shouldFilterByMultipleCategories() {
             when(userRepository.findByEmail(EMAIL)).thenReturn(Optional.of(user));
-            when(expenseRepository.findByUserId(user.getId())).thenReturn(List.of());
+            ExpenseFilter filter = new ExpenseFilter();
+            filter.setCategories(List.of(ExpenseCategory.EATING_OUT, ExpenseCategory.HOUSING));
 
-            List<ExpenseResponse> result = expenseService.getExpensesForUser(EMAIL, null);
+            Expense e1 = buildExpense(UUID.randomUUID(), "Lunch", BigDecimal.TEN, Instant.now(), ExpenseCategory.EATING_OUT);
+            Page<Expense> page = new PageImpl<>(List.of(e1), PageRequest.of(0, 10), 1);
 
-            assertThat(result).isEmpty();
+            when(expenseRepository.findAll(any(Specification.class), any(Pageable.class))).thenReturn(page);
+
+            PagedResponse<ExpenseResponse> result = expenseService.getExpensesForUser(EMAIL, filter);
+
+            assertThat(result.getData()).hasSize(1);
+            assertThat(result.getData().get(0).category()).isEqualTo(ExpenseCategory.EATING_OUT);
+        }
+
+        @Test
+        void shouldApplySortAndPagination() {
+            when(userRepository.findByEmail(EMAIL)).thenReturn(Optional.of(user));
+            ExpenseFilter filter = new ExpenseFilter();
+            filter.setSortBy("amount");
+            filter.setSortOrder(Sort.Direction.ASC);
+            filter.setPage(1);
+            filter.setPageSize(5);
+
+            ArgumentCaptor<Pageable> pageableCaptor = ArgumentCaptor.forClass(Pageable.class);
+            when(expenseRepository.findAll(any(Specification.class), pageableCaptor.capture()))
+                    .thenReturn(new PageImpl<>(List.of(), PageRequest.of(1, 5), 0));
+
+            expenseService.getExpensesForUser(EMAIL, filter);
+
+            Pageable captured = pageableCaptor.getValue();
+            assertThat(captured.getPageNumber()).isEqualTo(1);
+            assertThat(captured.getPageSize()).isEqualTo(5);
+            assertThat(captured.getSort().getOrderFor("amount").getDirection()).isEqualTo(Sort.Direction.ASC);
+        }
+
+        @Test
+        void shouldReturnEmptyPagedResponseWhenNoExpenses() {
+            when(userRepository.findByEmail(EMAIL)).thenReturn(Optional.of(user));
+            when(expenseRepository.findAll(any(Specification.class), any(Pageable.class)))
+                    .thenReturn(new PageImpl<>(List.of(), PageRequest.of(0, 10), 0));
+
+            PagedResponse<ExpenseResponse> result = expenseService.getExpensesForUser(EMAIL, new ExpenseFilter());
+
+            assertThat(result.getData()).isEmpty();
+        }
+
+        @Test
+        void shouldThrowWhenSortFieldNotWhitelisted() {
+            when(userRepository.findByEmail(EMAIL)).thenReturn(Optional.of(user));
+            ExpenseFilter filter = new ExpenseFilter();
+            filter.setSortBy("someRandomField");
+
+            assertThatThrownBy(() -> expenseService.getExpensesForUser(EMAIL, filter))
+                    .isInstanceOf(InvalidFilterException.class);
         }
     }
 

@@ -8,3 +8,6 @@ REFERENCES users(id);
 
 CREATE INDEX idx_expenses_user_category_created
 ON expenses (user_id, category, created_time);
+
+CREATE INDEX idx_expenses_user_category_date
+  ON expenses (user_id, category, expense_time DESC);
